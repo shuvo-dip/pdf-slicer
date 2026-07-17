@@ -9,10 +9,11 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 800px;
-      margin: 60px auto;
+      max-width: 850px;
+      margin: 50px auto;
       padding: 0 20px;
       line-height: 1.6;
+      color: #222;
     }
 
     h1 {
@@ -24,20 +25,56 @@
       margin-top: 0;
     }
 
-    .upload-box {
+    .panel {
       margin-top: 2rem;
-      padding: 2rem;
-      border: 2px dashed #999;
+      padding: 1.5rem;
+      border: 1px solid #ddd;
       border-radius: 10px;
+    }
+
+    .upload-box {
+      border: 2px dashed #999;
       text-align: center;
     }
 
-    input[type="file"] {
+    .file-info,
+    .layout-info {
       margin-top: 1rem;
     }
 
-    .file-info {
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      font-weight: bold;
+    }
+
+    select,
+    input[type="number"] {
+      margin-top: 0.4rem;
+      padding: 0.6rem;
+      font-size: 1rem;
+    }
+
+    .tile-preview {
+      display: grid;
+      gap: 4px;
       margin-top: 1rem;
+      max-width: 420px;
+    }
+
+    .tile {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 55px;
+      border: 1px solid #666;
+      background: #f5f5f5;
       font-weight: bold;
     }
 
@@ -46,6 +83,12 @@
       padding: 1rem;
       background: #f3f3f3;
       border-radius: 8px;
+    }
+
+    @media (max-width: 600px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -57,7 +100,7 @@
     Slice large-format PDF posters into printable pages.
   </p>
 
-  <div class="upload-box">
+  <div class="panel upload-box">
     <strong>Select a PDF poster</strong>
 
     <br />
@@ -71,30 +114,202 @@
     <div id="fileInfo" class="file-info"></div>
   </div>
 
+  <div class="panel">
+    <h2>Output layout</h2>
+
+    <div class="controls">
+      <label>
+        Paper size
+        <select id="paperSize">
+          <option value="A3">A3</option>
+          <option value="A4">A4</option>
+        </select>
+      </label>
+
+      <label>
+        Sheet orientation
+        <select id="sheetOrientation">
+          <option value="landscape">Landscape</option>
+          <option value="portrait">Portrait</option>
+        </select>
+      </label>
+
+      <label>
+        Columns
+        <input
+          id="columns"
+          type="number"
+          min="1"
+          max="20"
+          value="2"
+        />
+      </label>
+
+      <label>
+        Rows
+        <input
+          id="rows"
+          type="number"
+          min="1"
+          max="20"
+          value="4"
+        />
+      </label>
+    </div>
+
+    <div id="layoutInfo" class="layout-info"></div>
+    <div id="tilePreview" class="tile-preview"></div>
+  </div>
+
   <div class="privacy-note">
     <strong>Privacy:</strong>
     Your PDF is processed locally in your browser and is not uploaded
     to a server.
   </div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-   <script>
+
+  <script>
     const pdfInput = document.getElementById("pdfInput");
     const fileInfo = document.getElementById("fileInfo");
-  
+
+    const paperSize = document.getElementById("paperSize");
+    const sheetOrientation =
+      document.getElementById("sheetOrientation");
+
+    const columnsInput = document.getElementById("columns");
+    const rowsInput = document.getElementById("rows");
+
+    const layoutInfo = document.getElementById("layoutInfo");
+    const tilePreview = document.getElementById("tilePreview");
+
     const POINTS_PER_MM = 72 / 25.4;
-  
+
+    const PAPER_SIZES_MM = {
+      A3: {
+        width: 297,
+        height: 420
+      },
+      A4: {
+        width: 210,
+        height: 297
+      }
+    };
+
+    let sourceWidthMM = null;
+    let sourceHeightMM = null;
+
     function pointsToMillimeters(points) {
       return points / POINTS_PER_MM;
     }
-  
-    pdfInput.addEventListener("change", async () => {
-      const file = pdfInput.files[0];
-  
-      if (!file) {
-        fileInfo.textContent = "";
+
+    function getOutputSheetDimensions() {
+      const selectedPaper = PAPER_SIZES_MM[paperSize.value];
+
+      if (sheetOrientation.value === "landscape") {
+        return {
+          width: selectedPaper.height,
+          height: selectedPaper.width
+        };
+      }
+
+      return {
+        width: selectedPaper.width,
+        height: selectedPaper.height
+      };
+    }
+
+    function updateLayoutPreview() {
+      const columns = Number(columnsInput.value);
+      const rows = Number(rowsInput.value);
+
+      if (
+        !Number.isInteger(columns) ||
+        !Number.isInteger(rows) ||
+        columns < 1 ||
+        rows < 1
+      ) {
+        layoutInfo.textContent =
+          "Columns and rows must be positive integers.";
+
+        tilePreview.innerHTML = "";
         return;
       }
-  
+
+      const sheet = getOutputSheetDimensions();
+
+      const assembledWidth = columns * sheet.width;
+      const assembledHeight = rows * sheet.height;
+      const totalPages = columns * rows;
+
+      let scaleText = "";
+
+      if (sourceWidthMM && sourceHeightMM) {
+        const scaleX = assembledWidth / sourceWidthMM;
+        const scaleY = assembledHeight / sourceHeightMM;
+
+        const scale = Math.min(scaleX, scaleY) * 100;
+
+        scaleText = `
+          <div>
+            Approximate fit scale:
+            ${scale.toFixed(2)}%
+          </div>
+        `;
+      }
+
+      layoutInfo.innerHTML = `
+        <div>
+          Output page:
+          ${sheet.width} × ${sheet.height} mm
+        </div>
+
+        <div>
+          Grid:
+          ${columns} columns × ${rows} rows
+        </div>
+
+        <div>
+          Total pages:
+          ${totalPages}
+        </div>
+
+        <div>
+          Assembled size:
+          ${assembledWidth} × ${assembledHeight} mm
+        </div>
+
+        ${scaleText}
+      `;
+
+      tilePreview.innerHTML = "";
+      tilePreview.style.gridTemplateColumns =
+        `repeat(${columns}, 1fr)`;
+
+      for (let tileNumber = 1;
+           tileNumber <= totalPages;
+           tileNumber++) {
+
+        const tile = document.createElement("div");
+
+        tile.className = "tile";
+        tile.textContent = tileNumber;
+
+        tilePreview.appendChild(tile);
+      }
+    }
+
+    pdfInput.addEventListener("change", async () => {
+      const file = pdfInput.files[0];
+
+      if (!file) {
+        fileInfo.textContent = "";
+        sourceWidthMM = null;
+        sourceHeightMM = null;
+        updateLayoutPreview();
+        return;
+      }
+
       if (
         file.type !== "application/pdf" &&
         !file.name.toLowerCase().endsWith(".pdf")
@@ -103,45 +318,80 @@
         pdfInput.value = "";
         return;
       }
-  
+
       try {
         fileInfo.textContent = "Reading PDF locally...";
-  
+
         const arrayBuffer = await file.arrayBuffer();
-  
-        const pdfDocument = await PDFLib.PDFDocument.load(arrayBuffer);
-  
+
+        const pdfDocument =
+          await PDFLib.PDFDocument.load(arrayBuffer);
+
         const pageCount = pdfDocument.getPageCount();
         const firstPage = pdfDocument.getPage(0);
-  
+
         const widthPoints = firstPage.getWidth();
         const heightPoints = firstPage.getHeight();
-  
-        const widthMM = pointsToMillimeters(widthPoints);
-        const heightMM = pointsToMillimeters(heightPoints);
-  
+
+        sourceWidthMM =
+          pointsToMillimeters(widthPoints);
+
+        sourceHeightMM =
+          pointsToMillimeters(heightPoints);
+
         const orientation =
-          widthMM > heightMM ? "Landscape" : "Portrait";
-  
+          sourceWidthMM > sourceHeightMM
+            ? "Landscape"
+            : "Portrait";
+
         const sizeMB = file.size / (1024 * 1024);
-  
+
         fileInfo.innerHTML = `
           <div>Selected: ${file.name}</div>
           <div>File size: ${sizeMB.toFixed(2)} MB</div>
           <div>PDF pages: ${pageCount}</div>
+
           <div>
             First-page size:
-            ${widthMM.toFixed(1)} × ${heightMM.toFixed(1)} mm
+            ${sourceWidthMM.toFixed(1)}
+            ×
+            ${sourceHeightMM.toFixed(1)} mm
           </div>
+
           <div>Orientation: ${orientation}</div>
         `;
+
+        updateLayoutPreview();
+
       } catch (error) {
         console.error(error);
-  
+
         fileInfo.textContent =
           "The PDF could not be read. It may be damaged, encrypted, or unsupported.";
       }
     });
+
+    paperSize.addEventListener(
+      "change",
+      updateLayoutPreview
+    );
+
+    sheetOrientation.addEventListener(
+      "change",
+      updateLayoutPreview
+    );
+
+    columnsInput.addEventListener(
+      "input",
+      updateLayoutPreview
+    );
+
+    rowsInput.addEventListener(
+      "input",
+      updateLayoutPreview
+    );
+
+    updateLayoutPreview();
   </script>
 </body>
 </html>
