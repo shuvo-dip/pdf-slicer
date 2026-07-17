@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Slicer</title>
+
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #667085;
+      --border: #d9e0ea;
+      --primary: #175cd3;
+      --primary-dark: #124ba8;
+      --success: #167647;
+      --danger: #c62828;
+      --soft-blue: #eef4ff;
+      --soft-green: #ecfdf3;
+      --shadow: 0 12px 30px rgba(16, 24, 40, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system,
+        BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    .page-shell {
+      width: min(1280px, calc(100% - 32px));
+      margin: 34px auto 50px;
+    }
+
+    .page-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 18px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: 5px;
+      font-size: clamp(2rem, 4vw, 3.15rem);
+      letter-spacing: -0.045em;
+      line-height: 1;
+    }
+
+    h2 {
+      margin-bottom: 14px;
+      font-size: 1.08rem;
+    }
+
+    .subtitle {
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 1.02rem;
+    }
+
+    .privacy-badge {
+      flex: 0 0 auto;
+      max-width: 390px;
+      padding: 10px 13px;
+      border: 1px solid #b7e2c8;
+      border-radius: 10px;
+      background: var(--soft-green);
+      color: #12613a;
+      font-size: 0.9rem;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .sidebar {
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .compact-panel {
+      padding: 17px;
+    }
+
+    .preview-panel {
+      min-height: 660px;
+      padding: 18px;
+    }
+
+    .upload-zone {
+      padding: 16px;
+      border: 1.5px dashed #9aa7b8;
+      border-radius: 11px;
+      background: #fbfcfe;
+    }
+
+    .upload-zone input[type="file"] {
+      width: 100%;
+      margin-top: 9px;
+      font-size: 0.92rem;
+    }
+
+    .file-info {
+      display: grid;
+      gap: 5px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .file-info strong {
+      color: var(--text);
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 11px;
+    }
+
+    .control-grid .full-width {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      color: #344054;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    select,
+    input[type="number"] {
+      width: 100%;
+      min-height: 40px;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      font-weight: 500;
+    }
+
+    select:focus,
+    input[type="number"]:focus,
+    button:focus-visible,
+    a:focus-visible {
+      outline: 3px solid rgba(23, 92, 211, 0.18);
+      outline-offset: 2px;
+    }
+
+    .computed-value {
+      min-height: 40px;
+      padding: 9px 10px;
+      border: 1px solid #d8e0eb;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #344054;
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    .helper-text {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .layout-summary {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .summary-item {
+      padding: 9px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 9px;
+      background: #f8fafc;
+    }
+
+    .summary-label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.045em;
+    }
+
+    .summary-value {
+      display: block;
+      margin-top: 2px;
+      font-size: 0.9rem;
+      font-weight: 750;
+    }
+
+    .warning-box {
+      margin-top: 12px;
+      padding: 9px 11px;
+      border: 1px solid #f0cf87;
+      border-radius: 9px;
+      background: #fff8e8;
+      color: #7a4e00;
+      font-size: 0.83rem;
+    }
+
+    .generate-button {
+      width: 100%;
+      margin-top: 14px;
+      padding: 11px 14px;
+      border: 0;
+      border-radius: 9px;
+      background: var(--primary);
+      color: white;
+      font-size: 0.95rem;
+      font-weight: 750;
+      cursor: pointer;
+    }
+
+    .generate-button:hover:not(:disabled) {
+      background: var(--primary-dark);
+    }
+
+    .generate-button:disabled {
+      background: #a7b1c0;
+      cursor: not-allowed;
+    }
+
+    .generation-status {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .download-link {
+      display: block;
+      margin-top: 11px;
+      padding: 10px 12px;
+      border-radius: 9px;
+      background: var(--success);
+      color: white;
+      text-align: center;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 750;
+    }
+
+    .download-link[hidden] {
+      display: none;
+    }
+
+    .preview-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .preview-header h2 {
+      margin-bottom: 3px;
+    }
+
+    .preview-note {
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .orientation-pill {
+      flex: 0 0 auto;
+      padding: 6px 9px;
+      border-radius: 999px;
+      background: var(--soft-blue);
+      color: #1849a9;
+      font-size: 0.78rem;
+      font-weight: 750;
+    }
+
+    .preview-stage {
+      display: grid;
+      min-height: 565px;
+      place-items: center;
+      overflow: auto;
+      padding: 14px;
+      border: 1px solid #e3e8ef;
+      border-radius: 11px;
+      background:
+        linear-gradient(45deg, #f4f6f9 25%, transparent 25%),
+        linear-gradient(-45deg, #f4f6f9 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #f4f6f9 75%),
+        linear-gradient(-45deg, transparent 75%, #f4f6f9 75%);
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      background-size: 16px 16px;
+    }
+
+    .preview-placeholder {
+      max-width: 430px;
+      padding: 30px;
+      border: 1px dashed #aeb8c6;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.88);
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .preview-wrapper {
+      position: relative;
+      display: none;
+      width: fit-content;
+      max-width: 100%;
+      overflow: hidden;
+      border: 1px solid #718096;
+      background: white;
+      box-shadow: 0 12px 35px rgba(15, 23, 42, 0.16);
+    }
+
+    #posterCanvas {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+
+    #gridOverlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .tile-region {
+      position: absolute;
+      border: 1.5px solid rgba(198, 40, 40, 0.92);
+      background: rgba(198, 40, 40, 0.035);
+    }
+
+    .tile-region.partial {
+      background: rgba(245, 158, 11, 0.08);
+    }
+
+    .tile-label {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      min-width: 24px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(198, 40, 40, 0.92);
+      color: white;
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .output-panel {
+      margin-top: 18px;
+      padding: 18px;
+    }
+
+    .output-panel[hidden] {
+      display: none;
+    }
+
+    .output-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .output-header h2 {
+      margin-bottom: 3px;
+    }
+
+    .output-meta {
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .thumbnail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+      gap: 13px;
+    }
+
+    .thumbnail-card {
+      padding: 9px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #f8fafc;
+    }
+
+    .thumbnail-canvas-wrap {
+      display: grid;
+      min-height: 180px;
+      place-items: center;
+      overflow: hidden;
+      border: 1px solid #cfd7e3;
+      background: white;
+    }
+
+    .thumbnail-canvas-wrap canvas {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .thumbnail-label {
+      margin-top: 7px;
+      color: #344054;
+      font-size: 0.8rem;
+      font-weight: 750;
+      text-align: center;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    @media (max-width: 880px) {
+      .page-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .privacy-badge {
+        max-width: none;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .preview-panel {
+        min-height: auto;
+      }
+
+      .preview-stage {
+        min-height: 440px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .page-shell {
+        width: min(100% - 18px, 1280px);
+        margin-top: 18px;
+      }
+
+      .control-grid,
+      .layout-summary {
+        grid-template-columns: 1fr;
+      }
+
+      .control-grid .full-width {
+        grid-column: auto;
+      }
+
+      .preview-header,
+      .output-header {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="page-shell">
+    <header class="page-header">
+      <div>
+        <h1>PDF Slicer</h1>
+        <p class="subtitle">
+          Slice large-format posters into correctly proportioned printable pages.
+        </p>
+      </div>
+
+      <div class="privacy-badge">
+        <strong>Private by design:</strong> your PDF is processed locally in
+        this browser and is not uploaded to a server.
+      </div>
+    </header>
+
+    <section class="workspace">
+      <aside class="sidebar">
+        <section class="panel compact-panel">
+          <h2>1. Select a PDF poster</h2>
+
+          <div class="upload-zone">
+            <input
+              id="pdfInput"
+              type="file"
+              accept="application/pdf,.pdf"
+            />
+          </div>
+
+          <div id="fileInfo" class="file-info">
+            <span>No PDF selected.</span>
+          </div>
+        </section>
+
+        <section class="panel compact-panel">
+          <h2>2. Output layout</h2>
+
+          <div class="control-grid">
+            <label>
+              Paper size
+              <select id="paperSize">
+                <option value="A0">A0</option>
+                <option value="A1">A1</option>
+                <option value="A2">A2</option>
+                <option value="A3" selected>A3</option>
+                <option value="A4">A4</option>
+                <option value="A5">A5</option>
+              </select>
+            </label>
+
+            <label>
+              Sheet orientation
+              <select id="sheetOrientation">
+                <option value="auto" selected>Auto</option>
+                <option value="landscape">Landscape</option>
+                <option value="portrait">Portrait</option>
+              </select>
+            </label>
+
+            <label>
+              Columns
+              <input
+                id="columns"
+                type="number"
+                min="1"
+                max="20"
+                step="1"
+                value="2"
+              />
+            </label>
+
+            <label>
+              Rows
+              <div id="rowsDisplay" class="computed-value">—</div>
+            </label>
+          </div>
+
+          <p class="helper-text">
+            You choose the number of columns. Rows are calculated automatically
+            so every output page keeps the exact selected paper ratio. The last
+            row may contain blank space at the bottom.
+          </p>
+
+          <div id="layoutSummary" class="layout-summary"></div>
+          <div id="layoutWarning"></div>
+
+          <button id="generateButton" class="generate-button" disabled>
+            Generate sliced PDF
+          </button>
+
+          <div id="generationStatus" class="generation-status"></div>
+
+          <a
+            id="downloadLink"
+            class="download-link"
+            href="#"
+            hidden
+          >
+            Download sliced PDF
+          </a>
+        </section>
+      </aside>
+
+      <section class="panel preview-panel">
+        <div class="preview-header">
+          <div>
+            <h2>Poster preview</h2>
+            <p id="previewNote" class="preview-note">
+              Upload a PDF to see the poster and its exact slicing regions.
+            </p>
+          </div>
+
+          <div id="orientationPill" class="orientation-pill">
+            Waiting for PDF
+          </div>
+        </div>
+
+        <div id="previewStage" class="preview-stage">
+          <div id="previewPlaceholder" class="preview-placeholder">
+            The uploaded poster will appear here. Red boundaries mark the
+            content assigned to each output page.
+          </div>
+
+          <div id="previewWrapper" class="preview-wrapper">
+            <canvas id="posterCanvas"></canvas>
+            <div id="gridOverlay"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section id="outputPanel" class="panel output-panel" hidden>
+      <div class="output-header">
+        <div>
+          <h2>Generated page preview</h2>
+          <p class="output-meta">
+            These thumbnails show the actual pages in the downloadable PDF.
+          </p>
+        </div>
+
+        <div id="outputPreviewStatus" class="output-meta"></div>
+      </div>
+
+      <div id="thumbnailGrid" class="thumbnail-grid"></div>
+    </section>
+
+    <p class="footer-note">
+      Print the downloaded PDF at 100% / Actual size, one PDF page per sheet.
+      Do not apply poster tiling a second time in the print dialog.
+    </p>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    const pdfInput = document.getElementById("pdfInput");
+    const fileInfo = document.getElementById("fileInfo");
+    const paperSize = document.getElementById("paperSize");
+    const sheetOrientation = document.getElementById("sheetOrientation");
+    const columnsInput = document.getElementById("columns");
+    const rowsDisplay = document.getElementById("rowsDisplay");
+    const layoutSummary = document.getElementById("layoutSummary");
+    const layoutWarning = document.getElementById("layoutWarning");
+    const generateButton = document.getElementById("generateButton");
+    const generationStatus = document.getElementById("generationStatus");
+    const downloadLink = document.getElementById("downloadLink");
+    const previewStage = document.getElementById("previewStage");
+    const previewWrapper = document.getElementById("previewWrapper");
+    const previewPlaceholder = document.getElementById("previewPlaceholder");
+    const posterCanvas = document.getElementById("posterCanvas");
+    const gridOverlay = document.getElementById("gridOverlay");
+    const previewNote = document.getElementById("previewNote");
+    const orientationPill = document.getElementById("orientationPill");
+    const outputPanel = document.getElementById("outputPanel");
+    const outputPreviewStatus = document.getElementById("outputPreviewStatus");
+    const thumbnailGrid = document.getElementById("thumbnailGrid");
+
+    const POINTS_PER_MM = 72 / 25.4;
+    const EPSILON = 1e-8;
+    const MAX_OUTPUT_PAGES = 200;
+    const MAX_THUMBNAILS = 40;
+
+    const PAPER_SIZES_MM = {
+      A0: { width: 841, height: 1189 },
+      A1: { width: 594, height: 841 },
+      A2: { width: 420, height: 594 },
+      A3: { width: 297, height: 420 },
+      A4: { width: 210, height: 297 },
+      A5: { width: 148, height: 210 }
+    };
+
+    let uploadedPdfBytes = null;
+    let uploadedFileName = "poster.pdf";
+    let sourceWidthPoints = null;
+    let sourceHeightPoints = null;
+    let sourceWidthMM = null;
+    let sourceHeightMM = null;
+    let sourcePageCount = 0;
+    let sourcePageRotation = 0;
+    let currentDownloadURL = null;
+    let currentLayout = null;
+    let previewRenderTask = null;
+
+    function pointsToMillimeters(points) {
+      return points / POINTS_PER_MM;
+    }
+
+    function millimetersToPoints(mm) {
+      return mm * POINTS_PER_MM;
+    }
+
+    function formatNumber(value, digits = 1) {
+      return Number(value).toFixed(digits);
+    }
+
+    function getSheetDimensionsForOrientation(orientation) {
+      const paper = PAPER_SIZES_MM[paperSize.value];
+
+      if (orientation === "landscape") {
+        return {
+          width: paper.height,
+          height: paper.width,
+          orientation: "landscape"
+        };
+      }
+
+      return {
+        width: paper.width,
+        height: paper.height,
+        orientation: "portrait"
+      };
+    }
+
+    function evaluateOrientation(orientation, columns) {
+      const sheet = getSheetDimensionsForOrientation(orientation);
+      const tileWidthSourceMM = sourceWidthMM / columns;
+      const scale = sheet.width / tileWidthSourceMM;
+      const tileHeightSourceMM = sheet.height / scale;
+      const rows = Math.max(
+        1,
+        Math.ceil((sourceHeightMM - EPSILON) / tileHeightSourceMM)
+      );
+      const coveredHeightSourceMM = rows * tileHeightSourceMM;
+      const blankSourceMM = Math.max(
+        0,
+        coveredHeightSourceMM - sourceHeightMM
+      );
+      const blankOutputMM = blankSourceMM * scale;
+      const pageCount = columns * rows;
+      const scaleDeviation = Math.abs(Math.log(scale));
+      const blankFraction = blankSourceMM / coveredHeightSourceMM;
+
+      return {
+        sheet,
+        columns,
+        rows,
+        pageCount,
+        scale,
+        scaleDeviation,
+        tileWidthSourceMM,
+        tileHeightSourceMM,
+        coveredHeightSourceMM,
+        blankSourceMM,
+        blankOutputMM,
+        blankFraction,
+        contentOutputWidthMM: sourceWidthMM * scale,
+        contentOutputHeightMM: sourceHeightMM * scale,
+        assembledWidthMM: columns * sheet.width,
+        assembledHeightMM: rows * sheet.height
+      };
+    }
+
+    function chooseAutomaticOrientation(columns) {
+      const portrait = evaluateOrientation("portrait", columns);
+      const landscape = evaluateOrientation("landscape", columns);
+
+      const candidates = [portrait, landscape];
+
+      candidates.sort((a, b) => {
+        if (Math.abs(a.scaleDeviation - b.scaleDeviation) > 1e-9) {
+          return a.scaleDeviation - b.scaleDeviation;
+        }
+
+        if (Math.abs(a.blankFraction - b.blankFraction) > 1e-9) {
+          return a.blankFraction - b.blankFraction;
+        }
+
+        return a.pageCount - b.pageCount;
+      });
+
+      return candidates[0];
+    }
+
+    function calculateLayout() {
+      if (!sourceWidthMM || !sourceHeightMM) {
+        return null;
+      }
+
+      const columns = Number(columnsInput.value);
+
+      if (
+        !Number.isInteger(columns) ||
+        columns < 1 ||
+        columns > 20
+      ) {
+        return null;
+      }
+
+      if (sheetOrientation.value === "auto") {
+        return chooseAutomaticOrientation(columns);
+      }
+
+      return evaluateOrientation(sheetOrientation.value, columns);
+    }
+
+    function summaryItem(label, value) {
+      return `
+        <div class="summary-item">
+          <span class="summary-label">${label}</span>
+          <span class="summary-value">${value}</span>
+        </div>
+      `;
+    }
+
+    function invalidateGeneratedOutput() {
+      if (currentDownloadURL) {
+        URL.revokeObjectURL(currentDownloadURL);
+        currentDownloadURL = null;
+      }
+
+      downloadLink.hidden = true;
+      downloadLink.removeAttribute("href");
+      generationStatus.textContent = "";
+      outputPanel.hidden = true;
+      outputPreviewStatus.textContent = "";
+      thumbnailGrid.innerHTML = "";
+    }
+
+    function updateLayout() {
+      currentLayout = calculateLayout();
+      layoutWarning.innerHTML = "";
+
+      if (!currentLayout) {
+        rowsDisplay.textContent = "—";
+        layoutSummary.innerHTML = "";
+        generateButton.disabled = true;
+
+        if (uploadedPdfBytes) {
+          layoutWarning.innerHTML = `
+            <div class="warning-box">
+              Enter a whole number of columns between 1 and 20.
+            </div>
+          `;
+        }
+
+        drawGridOverlay(null);
+        return;
+      }
+
+      rowsDisplay.textContent = `${currentLayout.rows} (automatic)`;
+
+      const orientationLabel =
+        currentLayout.sheet.orientation === "landscape"
+          ? "Landscape"
+          : "Portrait";
+
+      layoutSummary.innerHTML = [
+        summaryItem(
+          "Output page",
+          `${currentLayout.sheet.width} × ${currentLayout.sheet.height} mm`
+        ),
+        summaryItem("Chosen orientation", orientationLabel),
+        summaryItem(
+          "Grid",
+          `${currentLayout.columns} × ${currentLayout.rows}`
+        ),
+        summaryItem("Total pages", currentLayout.pageCount),
+        summaryItem(
+          "Poster scale",
+          `${formatNumber(currentLayout.scale * 100, 2)}%`
+        ),
+        summaryItem(
+          "Printed content",
+          `${formatNumber(currentLayout.contentOutputWidthMM)} × ${formatNumber(
+            currentLayout.contentOutputHeightMM
+          )} mm`
+        )
+      ].join("");
+
+      orientationPill.textContent =
+        `${paperSize.value} ${orientationLabel.toLowerCase()} · ` +
+        `${currentLayout.columns} × ${currentLayout.rows}`;
+
+      if (currentLayout.blankOutputMM > 0.15) {
+        layoutWarning.innerHTML = `
+          <div class="warning-box">
+            The final row keeps the full ${paperSize.value} page size and will
+            contain approximately ${formatNumber(
+              currentLayout.blankOutputMM,
+              1
+            )} mm of blank space at the bottom.
+          </div>
+        `;
+      }
+
+      if (currentLayout.pageCount > MAX_OUTPUT_PAGES) {
+        layoutWarning.innerHTML += `
+          <div class="warning-box">
+            This layout would create ${currentLayout.pageCount} pages. The
+            current safety limit is ${MAX_OUTPUT_PAGES}. Reduce the number of
+            columns or select a larger paper size.
+          </div>
+        `;
+      }
+
+      if (sourcePageRotation !== 0) {
+        layoutWarning.innerHTML += `
+          <div class="warning-box">
+            This PDF uses ${sourcePageRotation}° page-rotation metadata.
+            Inspect the generated thumbnails carefully before printing.
+          </div>
+        `;
+      }
+
+      generateButton.disabled =
+        !uploadedPdfBytes ||
+        currentLayout.pageCount > MAX_OUTPUT_PAGES;
+
+      drawGridOverlay(currentLayout);
+
+      if (uploadedPdfBytes) {
+        previewNote.textContent =
+          "Red rectangles show the exact poster content assigned to each " +
+          "output page. The last row may use only part of the page height.";
+      }
+    }
+
+    function drawGridOverlay(layout) {
+      gridOverlay.innerHTML = "";
+
+      if (!layout || !sourceWidthMM || !sourceHeightMM) {
+        return;
+      }
+
+      let pageNumber = 1;
+
+      for (let row = 0; row < layout.rows; row++) {
+        const sourceTopFromPageTopMM =
+          row * layout.tileHeightSourceMM;
+
+        const remainingHeightMM =
+          sourceHeightMM - sourceTopFromPageTopMM;
+
+        const visibleHeightMM = Math.min(
+          layout.tileHeightSourceMM,
+          remainingHeightMM
+        );
+
+        if (visibleHeightMM <= 0) {
+          continue;
+        }
+
+        for (let column = 0;
+             column < layout.columns;
+             column++) {
+          const region = document.createElement("div");
+          const isPartial =
+            visibleHeightMM < layout.tileHeightSourceMM - 1e-6;
+
+          region.className =
+            `tile-region${isPartial ? " partial" : ""}`;
+
+          region.style.left =
+            `${(column / layout.columns) * 100}%`;
+
+          region.style.width =
+            `${100 / layout.columns}%`;
+
+          region.style.top =
+            `${(sourceTopFromPageTopMM / sourceHeightMM) * 100}%`;
+
+          region.style.height =
+            `${(visibleHeightMM / sourceHeightMM) * 100}%`;
+
+          const label = document.createElement("span");
+          label.className = "tile-label";
+          label.textContent = pageNumber;
+
+          region.appendChild(label);
+          gridOverlay.appendChild(region);
+          pageNumber += 1;
+        }
+      }
+    }
+
+    async function renderPosterPreview(pdfBytes) {
+      if (previewRenderTask) {
+        try {
+          previewRenderTask.cancel();
+        } catch (error) {
+          console.debug("Previous preview render already completed.");
+        }
+      }
+
+      const loadingTask = pdfjsLib.getDocument({
+        data: pdfBytes.slice()
+      });
+
+      const pdf = await loadingTask.promise;
+      const page = await pdf.getPage(1);
+
+      const baseViewport = page.getViewport({ scale: 1 });
+      const availableWidth = Math.max(
+        260,
+        Math.min(780, previewStage.clientWidth - 42)
+      );
+      const previewScale = availableWidth / baseViewport.width;
+      const viewport = page.getViewport({ scale: previewScale });
+      const deviceScale = Math.min(window.devicePixelRatio || 1, 2);
+      const context = posterCanvas.getContext("2d");
+
+      posterCanvas.width = Math.floor(viewport.width * deviceScale);
+      posterCanvas.height = Math.floor(viewport.height * deviceScale);
+      posterCanvas.style.width = `${viewport.width}px`;
+      posterCanvas.style.height = `${viewport.height}px`;
+
+      context.setTransform(
+        deviceScale,
+        0,
+        0,
+        deviceScale,
+        0,
+        0
+      );
+
+      previewRenderTask = page.render({
+        canvasContext: context,
+        viewport
+      });
+
+      await previewRenderTask.promise;
+
+      previewPlaceholder.style.display = "none";
+      previewWrapper.style.display = "block";
+      drawGridOverlay(currentLayout);
+    }
+
+    async function generateSlicedPdf() {
+      if (!uploadedPdfBytes || !currentLayout) {
+        generationStatus.textContent =
+          "Upload a PDF and choose a valid layout first.";
+        return;
+      }
+
+      try {
+        generateButton.disabled = true;
+        downloadLink.hidden = true;
+        outputPanel.hidden = true;
+        thumbnailGrid.innerHTML = "";
+        generationStatus.textContent =
+          "Generating the sliced PDF locally in your browser…";
+
+        const sourcePdf = await PDFLib.PDFDocument.load(
+          uploadedPdfBytes.slice()
+        );
+
+        if (sourcePdf.getPageCount() < 1) {
+          throw new Error("The PDF contains no pages.");
+        }
+
+        const sourcePage = sourcePdf.getPage(0);
+        const workingSourceWidth = sourcePage.getWidth();
+        const workingSourceHeight = sourcePage.getHeight();
+
+        const sheetWidthPoints = millimetersToPoints(
+          currentLayout.sheet.width
+        );
+        const sheetHeightPoints = millimetersToPoints(
+          currentLayout.sheet.height
+        );
+
+        const tileWidthSourcePoints =
+          workingSourceWidth / currentLayout.columns;
+
+        const scale =
+          sheetWidthPoints / tileWidthSourcePoints;
+
+        const tileHeightSourcePoints =
+          sheetHeightPoints / scale;
+
+        const rows = Math.max(
+          1,
+          Math.ceil(
+            (workingSourceHeight - EPSILON) /
+              tileHeightSourcePoints
+          )
+        );
+
+        const outputPdf = await PDFLib.PDFDocument.create();
+
+        const [embeddedSourcePage] = await outputPdf.embedPdf(
+          uploadedPdfBytes.slice(),
+          [0]
+        );
+
+        for (let row = 0; row < rows; row++) {
+          const sourceTop =
+            workingSourceHeight - row * tileHeightSourcePoints;
+
+          const sourceBottom = Math.max(
+            0,
+            sourceTop - tileHeightSourcePoints
+          );
+
+          const visibleHeightSourcePoints =
+            sourceTop - sourceBottom;
+
+          const bottomBlankOutputPoints = Math.max(
+            0,
+            sheetHeightPoints -
+              visibleHeightSourcePoints * scale
+          );
+
+          for (let column = 0;
+               column < currentLayout.columns;
+               column++) {
+            const outputPage = outputPdf.addPage([
+              sheetWidthPoints,
+              sheetHeightPoints
+            ]);
+
+            const sourceLeft =
+              column * tileWidthSourcePoints;
+
+            outputPage.drawPage(embeddedSourcePage, {
+              x: -sourceLeft * scale,
+              y:
+                bottomBlankOutputPoints -
+                sourceBottom * scale,
+              width: workingSourceWidth * scale,
+              height: workingSourceHeight * scale
+            });
+          }
+        }
+
+        outputPdf.setTitle("Sliced poster");
+        outputPdf.setSubject(
+          `Poster sliced into ${currentLayout.columns} columns and ${rows} rows`
+        );
+        outputPdf.setCreator("PDF Slicer");
+        outputPdf.setProducer("PDF Slicer using pdf-lib");
+
+        const outputBytes = await outputPdf.save();
+        const outputUint8Array = new Uint8Array(outputBytes);
+        const outputBlob = new Blob([outputUint8Array], {
+          type: "application/pdf"
+        });
+
+        if (currentDownloadURL) {
+          URL.revokeObjectURL(currentDownloadURL);
+        }
+
+        currentDownloadURL = URL.createObjectURL(outputBlob);
+
+        const baseName = uploadedFileName.replace(/\.pdf$/i, "");
+        const orientationName =
+          currentLayout.sheet.orientation === "landscape"
+            ? "landscape"
+            : "portrait";
+
+        const outputFileName =
+          `${baseName}_${paperSize.value}_${orientationName}_` +
+          `${currentLayout.columns}x${rows}_tiles.pdf`;
+
+        downloadLink.href = currentDownloadURL;
+        downloadLink.download = outputFileName;
+        downloadLink.textContent = `Download ${outputFileName}`;
+        downloadLink.hidden = false;
+
+        const outputSizeMB = outputBlob.size / (1024 * 1024);
+
+        generationStatus.innerHTML = `
+          <strong>Output ready.</strong><br />
+          ${currentLayout.columns * rows} pages ·
+          ${currentLayout.sheet.width} ×
+          ${currentLayout.sheet.height} mm ·
+          ${formatNumber(outputSizeMB, 2)} MB
+        `;
+
+        await renderOutputThumbnails(
+          outputUint8Array,
+          currentLayout.columns,
+          rows
+        );
+      } catch (error) {
+        console.error(error);
+        generationStatus.textContent =
+          `Could not generate the sliced PDF: ${error.message}`;
+      } finally {
+        generateButton.disabled =
+          !uploadedPdfBytes ||
+          !currentLayout ||
+          currentLayout.pageCount > MAX_OUTPUT_PAGES;
+      }
+    }
+
+    async function renderOutputThumbnails(
+      outputBytes,
+      columns,
+      rows
+    ) {
+      outputPanel.hidden = false;
+      thumbnailGrid.innerHTML = "";
+      outputPreviewStatus.textContent = "Rendering page previews…";
+
+      const loadingTask = pdfjsLib.getDocument({
+        data: outputBytes.slice()
+      });
+
+      const pdf = await loadingTask.promise;
+      const pageCount = pdf.numPages;
+      const previewCount = Math.min(pageCount, MAX_THUMBNAILS);
+
+      for (let pageNumber = 1;
+           pageNumber <= previewCount;
+           pageNumber++) {
+        const page = await pdf.getPage(pageNumber);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const thumbnailWidth = 175;
+        const scale = thumbnailWidth / baseViewport.width;
+        const viewport = page.getViewport({ scale });
+        const deviceScale = Math.min(window.devicePixelRatio || 1, 1.5);
+
+        const card = document.createElement("article");
+        card.className = "thumbnail-card";
+
+        const canvasWrap = document.createElement("div");
+        canvasWrap.className = "thumbnail-canvas-wrap";
+
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        canvas.width = Math.floor(viewport.width * deviceScale);
+        canvas.height = Math.floor(viewport.height * deviceScale);
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+
+        context.setTransform(
+          deviceScale,
+          0,
+          0,
+          deviceScale,
+          0,
+          0
+        );
+
+        await page.render({
+          canvasContext: context,
+          viewport
+        }).promise;
+
+        const row = Math.floor((pageNumber - 1) / columns) + 1;
+        const column = ((pageNumber - 1) % columns) + 1;
+
+        const label = document.createElement("div");
+        label.className = "thumbnail-label";
+        label.textContent =
+          `Page ${pageNumber} · Row ${row}, Column ${column}`;
+
+        canvasWrap.appendChild(canvas);
+        card.appendChild(canvasWrap);
+        card.appendChild(label);
+        thumbnailGrid.appendChild(card);
+      }
+
+      outputPreviewStatus.textContent =
+        pageCount > MAX_THUMBNAILS
+          ? `Showing the first ${MAX_THUMBNAILS} of ${pageCount} pages.`
+          : `${pageCount} page${pageCount === 1 ? "" : "s"} generated.`;
+    }
+
+    function resetUploadedFileState() {
+      uploadedPdfBytes = null;
+      uploadedFileName = "poster.pdf";
+      sourceWidthPoints = null;
+      sourceHeightPoints = null;
+      sourceWidthMM = null;
+      sourceHeightMM = null;
+      sourcePageCount = 0;
+      sourcePageRotation = 0;
+      currentLayout = null;
+
+      fileInfo.innerHTML = "<span>No PDF selected.</span>";
+      previewWrapper.style.display = "none";
+      previewPlaceholder.style.display = "block";
+      previewNote.textContent =
+        "Upload a PDF to see the poster and its exact slicing regions.";
+      orientationPill.textContent = "Waiting for PDF";
+      rowsDisplay.textContent = "—";
+      layoutSummary.innerHTML = "";
+      layoutWarning.innerHTML = "";
+      generateButton.disabled = true;
+      invalidateGeneratedOutput();
+      gridOverlay.innerHTML = "";
+    }
+
+    pdfInput.addEventListener("change", async () => {
+      const file = pdfInput.files[0];
+
+      if (!file) {
+        resetUploadedFileState();
+        return;
+      }
+
+      if (
+        file.type !== "application/pdf" &&
+        !file.name.toLowerCase().endsWith(".pdf")
+      ) {
+        resetUploadedFileState();
+        fileInfo.innerHTML =
+          "<span>Please select a valid PDF file.</span>";
+        pdfInput.value = "";
+        return;
+      }
+
+      try {
+        invalidateGeneratedOutput();
+        fileInfo.innerHTML = "<span>Reading PDF locally…</span>";
+
+        const arrayBuffer = await file.arrayBuffer();
+        uploadedPdfBytes = new Uint8Array(arrayBuffer);
+        uploadedFileName = file.name;
+
+        const pdfDocument = await PDFLib.PDFDocument.load(
+          uploadedPdfBytes.slice()
+        );
+
+        sourcePageCount = pdfDocument.getPageCount();
+
+        if (sourcePageCount < 1) {
+          throw new Error("The PDF contains no pages.");
+        }
+
+        const firstPage = pdfDocument.getPage(0);
+        sourceWidthPoints = firstPage.getWidth();
+        sourceHeightPoints = firstPage.getHeight();
+        sourceWidthMM = pointsToMillimeters(sourceWidthPoints);
+        sourceHeightMM = pointsToMillimeters(sourceHeightPoints);
+        sourcePageRotation = firstPage.getRotation().angle || 0;
+
+        const sourceOrientation =
+          sourceWidthMM > sourceHeightMM
+            ? "Landscape"
+            : "Portrait";
+
+        const sizeMB = file.size / (1024 * 1024);
+
+        fileInfo.innerHTML = `
+          <span><strong>${file.name}</strong></span>
+          <span>${formatNumber(sizeMB, 2)} MB · ${sourcePageCount} page${
+            sourcePageCount === 1 ? "" : "s"
+          }</span>
+          <span>${formatNumber(sourceWidthMM)} × ${formatNumber(
+            sourceHeightMM
+          )} mm · ${sourceOrientation}</span>
+          ${
+            sourcePageCount > 1
+              ? "<span>Only the first page will be sliced in this version.</span>"
+              : ""
+          }
+        `;
+
+        updateLayout();
+        await renderPosterPreview(uploadedPdfBytes);
+      } catch (error) {
+        console.error(error);
+        resetUploadedFileState();
+        fileInfo.innerHTML = `
+          <span>The PDF could not be read: ${error.message}</span>
+        `;
+      }
+    });
+
+    paperSize.addEventListener("change", () => {
+      invalidateGeneratedOutput();
+      updateLayout();
+    });
+
+    sheetOrientation.addEventListener("change", () => {
+      invalidateGeneratedOutput();
+      updateLayout();
+    });
+
+    columnsInput.addEventListener("input", () => {
+      invalidateGeneratedOutput();
+      updateLayout();
+    });
+
+    generateButton.addEventListener("click", generateSlicedPdf);
+
+    updateLayout();
+  </script>
+</body>
+</html>
