@@ -492,6 +492,29 @@
         flex-direction: column;
       }
     }
+    .site-footer {
+      margin-top: 3rem;
+      padding: 1.2rem 0;
+      border-top: 1px solid #ddd;
+    
+      color: #666;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      text-align: center;
+    }
+    
+    .site-footer p {
+      margin: 0.2rem 0;
+    }
+    
+    .site-footer a {
+      color: inherit;
+    }
+    
+    .site-updated {
+      font-size: 0.72rem;
+      color: #888;
+    }
   </style>
 </head>
 
@@ -649,7 +672,38 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-
+  <script>
+    async function updateLastModifiedDate() {
+      const dateElement = document.getElementById("lastUpdated");
+  
+      try {
+        const response = await fetch(
+          "https://api.github.com/repos/shuvo-dip/pdf-slicer/commits/main"
+        );
+  
+        if (!response.ok) {
+          throw new Error(`GitHub API error: ${response.status}`);
+        }
+  
+        const commit = await response.json();
+        const commitDate = new Date(commit.commit.committer.date);
+  
+        dateElement.textContent = commitDate.toLocaleDateString(
+          "en-GB",
+          {
+            day: "numeric",
+            month: "long",
+            year: "numeric"
+          }
+        );
+      } catch (error) {
+        console.error("Could not retrieve update date:", error);
+        dateElement.textContent = "Unavailable";
+      }
+    }
+  
+    updateLastModifiedDate();
+  </script>
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -1406,5 +1460,22 @@
     async
     src="https://gc.zgo.at/count.js"
   ></script>
+  <footer class="site-footer">
+  <p>
+    © 2026 Subhadip Biswas ·
+    <a
+      href="https://github.com/shuvo-dip/pdf-slicer"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Source code
+    </a>
+    · MIT License
+  </p>
+
+  <p class="site-updated">
+    Last updated: <span id="lastUpdated">Loading…</span>
+  </p>
+</footer>
 </body>
 </html>
