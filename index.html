@@ -76,29 +76,71 @@
     Your PDF is processed locally in your browser and is not uploaded
     to a server.
   </div>
-
-  <script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+   <script>
     const pdfInput = document.getElementById("pdfInput");
     const fileInfo = document.getElementById("fileInfo");
-
-    pdfInput.addEventListener("change", () => {
+  
+    const POINTS_PER_MM = 72 / 25.4;
+  
+    function pointsToMillimeters(points) {
+      return points / POINTS_PER_MM;
+    }
+  
+    pdfInput.addEventListener("change", async () => {
       const file = pdfInput.files[0];
-
+  
       if (!file) {
         fileInfo.textContent = "";
         return;
       }
-
-      if (file.type !== "application/pdf") {
+  
+      if (
+        file.type !== "application/pdf" &&
+        !file.name.toLowerCase().endsWith(".pdf")
+      ) {
         fileInfo.textContent = "Please select a PDF file.";
         pdfInput.value = "";
         return;
       }
-
-      const sizeMB = file.size / (1024 * 1024);
-
-      fileInfo.textContent =
-        `Selected: ${file.name} (${sizeMB.toFixed(2)} MB)`;
+  
+      try {
+        fileInfo.textContent = "Reading PDF locally...";
+  
+        const arrayBuffer = await file.arrayBuffer();
+  
+        const pdfDocument = await PDFLib.PDFDocument.load(arrayBuffer);
+  
+        const pageCount = pdfDocument.getPageCount();
+        const firstPage = pdfDocument.getPage(0);
+  
+        const widthPoints = firstPage.getWidth();
+        const heightPoints = firstPage.getHeight();
+  
+        const widthMM = pointsToMillimeters(widthPoints);
+        const heightMM = pointsToMillimeters(heightPoints);
+  
+        const orientation =
+          widthMM > heightMM ? "Landscape" : "Portrait";
+  
+        const sizeMB = file.size / (1024 * 1024);
+  
+        fileInfo.innerHTML = `
+          <div>Selected: ${file.name}</div>
+          <div>File size: ${sizeMB.toFixed(2)} MB</div>
+          <div>PDF pages: ${pageCount}</div>
+          <div>
+            First-page size:
+            ${widthMM.toFixed(1)} × ${heightMM.toFixed(1)} mm
+          </div>
+          <div>Orientation: ${orientation}</div>
+        `;
+      } catch (error) {
+        console.error(error);
+  
+        fileInfo.textContent =
+          "The PDF could not be read. It may be damaged, encrypted, or unsupported.";
+      }
     });
   </script>
 </body>
