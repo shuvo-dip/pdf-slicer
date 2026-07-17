@@ -24,6 +24,23 @@
       margin-top: 0;
     }
 
+    .upload-box {
+      margin-top: 2rem;
+      padding: 2rem;
+      border: 2px dashed #999;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    input[type="file"] {
+      margin-top: 1rem;
+    }
+
+    .file-info {
+      margin-top: 1rem;
+      font-weight: bold;
+    }
+
     .privacy-note {
       margin-top: 2rem;
       padding: 1rem;
@@ -40,13 +57,49 @@
     Slice large-format PDF posters into printable pages.
   </p>
 
-  <p>
-    This tool will process PDF files entirely inside your browser.
-  </p>
+  <div class="upload-box">
+    <strong>Select a PDF poster</strong>
+
+    <br />
+
+    <input
+      id="pdfInput"
+      type="file"
+      accept="application/pdf"
+    />
+
+    <div id="fileInfo" class="file-info"></div>
+  </div>
 
   <div class="privacy-note">
     <strong>Privacy:</strong>
-    Your PDF will not be uploaded to a server.
+    Your PDF is processed locally in your browser and is not uploaded
+    to a server.
   </div>
+
+  <script>
+    const pdfInput = document.getElementById("pdfInput");
+    const fileInfo = document.getElementById("fileInfo");
+
+    pdfInput.addEventListener("change", () => {
+      const file = pdfInput.files[0];
+
+      if (!file) {
+        fileInfo.textContent = "";
+        return;
+      }
+
+      if (file.type !== "application/pdf") {
+        fileInfo.textContent = "Please select a PDF file.";
+        pdfInput.value = "";
+        return;
+      }
+
+      const sizeMB = file.size / (1024 * 1024);
+
+      fileInfo.textContent =
+        `Selected: ${file.name} (${sizeMB.toFixed(2)} MB)`;
+    });
+  </script>
 </body>
 </html>
