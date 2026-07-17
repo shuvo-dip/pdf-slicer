@@ -90,6 +90,67 @@
         grid-template-columns: 1fr;
       }
     }
+    .preview-section {
+  margin-top: 2rem;
+}
+
+.preview-wrapper {
+  position: relative;
+  display: none;
+  width: fit-content;
+  max-width: 100%;
+  margin: 1rem auto 0;
+  border: 1px solid #777;
+  background: white;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+#posterCanvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#gridOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.grid-line {
+  position: absolute;
+  background: rgba(210, 20, 20, 0.85);
+}
+
+.grid-line.vertical {
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-1px);
+}
+
+.grid-line.horizontal {
+  left: 0;
+  right: 0;
+  height: 2px;
+  transform: translateY(-1px);
+}
+
+.preview-note {
+  color: #555;
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.preview-placeholder {
+  padding: 2rem;
+  text-align: center;
+  color: #666;
+  background: #fafafa;
+  border: 1px dashed #aaa;
+  border-radius: 8px;
+}
   </style>
 </head>
 
@@ -160,16 +221,34 @@
     <div id="layoutInfo" class="layout-info"></div>
     <div id="tilePreview" class="tile-preview"></div>
   </div>
-
+    <div class="panel preview-section">
+    <h2>Poster preview</h2>
+  
+    <p class="preview-note">
+      The red lines show where the poster will be sliced.
+    </p>
+  
+    <div id="previewPlaceholder" class="preview-placeholder">
+      Upload a PDF to preview the poster and selected tile layout.
+    </div>
+  
+    <div id="previewWrapper" class="preview-wrapper">
+      <canvas id="posterCanvas"></canvas>
+      <div id="gridOverlay"></div>
+    </div>
+  </div>
   <div class="privacy-note">
     <strong>Privacy:</strong>
     Your PDF is processed locally in your browser and is not uploaded
     to a server.
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 
   <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     const pdfInput = document.getElementById("pdfInput");
     const fileInfo = document.getElementById("fileInfo");
 
@@ -195,7 +274,19 @@
         height: 297
       }
     };
-
+    const previewWrapper =
+      document.getElementById("previewWrapper");
+    
+    const previewPlaceholder =
+      document.getElementById("previewPlaceholder");
+    
+    const posterCanvas =
+      document.getElementById("posterCanvas");
+    
+    const gridOverlay =
+      document.getElementById("gridOverlay");
+    
+    let uploadedPdfBytes = null;
     let sourceWidthMM = null;
     let sourceHeightMM = null;
 
@@ -217,6 +308,102 @@
         width: selectedPaper.width,
         height: selectedPaper.height
       };
+    }
+    async function renderPosterPreview(pdfBytes) {
+      const loadingTask = pdfjsLib.getDocument({
+        data: pdfBytes.slice()
+      });
+    
+      const pdf = await loadingTask.promise;
+      const page = await pdf.getPage(1);
+    
+      const unscaledViewport = page.getViewport({
+        scale: 1
+      });
+    
+      const maximumPreviewWidth = 700;
+    
+      const previewScale =
+        Math.min(
+          maximumPreviewWidth / unscaledViewport.width,
+          1.5
+        );
+    
+      const viewport = page.getViewport({
+        scale: previewScale
+      });
+    
+      const deviceScale =
+        window.devicePixelRatio || 1;
+    
+      const context = posterCanvas.getContext("2d");
+    
+      posterCanvas.width =
+        Math.floor(viewport.width * deviceScale);
+    
+      posterCanvas.height =
+        Math.floor(viewport.height * deviceScale);
+    
+      posterCanvas.style.width =
+        `${viewport.width}px`;
+    
+      posterCanvas.style.height =
+        `${viewport.height}px`;
+    
+      context.setTransform(
+        deviceScale,
+        0,
+        0,
+        deviceScale,
+        0,
+        0
+      );
+    
+      await page.render({
+        canvasContext: context,
+        viewport: viewport
+      }).promise;
+    
+      previewPlaceholder.style.display = "none";
+      previewWrapper.style.display = "block";
+    
+      drawGridOverlay();
+    }
+    
+    function drawGridOverlay() {
+      gridOverlay.innerHTML = "";
+    
+      const columns = Number(columnsInput.value);
+      const rows = Number(rowsInput.value);
+    
+      if (
+        !Number.isInteger(columns) ||
+        !Number.isInteger(rows) ||
+        columns < 1 ||
+        rows < 1
+      ) {
+        return;
+      }
+    
+      for (let column = 1; column < columns; column++) {
+        const line = document.createElement("div");
+    
+        line.className = "grid-line vertical";
+        line.style.left =
+          `${(column / columns) * 100}%`;
+    
+        gridOverlay.appendChild(line);
+      }
+    
+      for (let row = 1; row < rows; row++) {
+        const line = document.createElement("div");
+    
+        line.className = "grid-line horizontal";
+        line.style.top =
+          `${(row / rows) * 100}%`;
+    
+        gridOverlay.appendChild(line);
+      }
     }
 
     function updateLayoutPreview() {
@@ -286,16 +473,21 @@
       tilePreview.style.gridTemplateColumns =
         `repeat(${columns}, 1fr)`;
 
-      for (let tileNumber = 1;
-           tileNumber <= totalPages;
-           tileNumber++) {
-
+      for (
+        let tileNumber = 1;
+        tileNumber <= totalPages;
+        tileNumber++
+      ) {
         const tile = document.createElement("div");
-
+      
         tile.className = "tile";
         tile.textContent = tileNumber;
-
+      
         tilePreview.appendChild(tile);
+      }
+      
+      if (uploadedPdfBytes) {
+        drawGridOverlay();
       }
     }
 
@@ -304,8 +496,14 @@
 
       if (!file) {
         fileInfo.textContent = "";
+      
         sourceWidthMM = null;
         sourceHeightMM = null;
+        uploadedPdfBytes = null;
+      
+        previewWrapper.style.display = "none";
+        previewPlaceholder.style.display = "block";
+      
         updateLayoutPreview();
         return;
       }
@@ -323,6 +521,7 @@
         fileInfo.textContent = "Reading PDF locally...";
 
         const arrayBuffer = await file.arrayBuffer();
+        uploadedPdfBytes = new Uint8Array(arrayBuffer);
 
         const pdfDocument =
           await PDFLib.PDFDocument.load(arrayBuffer);
@@ -362,7 +561,7 @@
         `;
 
         updateLayoutPreview();
-
+        await renderPosterPreview(uploadedPdfBytes);
       } catch (error) {
         console.error(error);
 
