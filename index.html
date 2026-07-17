@@ -4,7 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PDF Slicer</title>
-
+  
+  <link
+    rel="icon"
+    href="./favicon.svg"
+    type="image/svg+xml"
+  />
+  
+  <link
+    rel="apple-touch-icon"
+    href="./favicon.png"
+  />
   <style>
     :root {
       color-scheme: light;
@@ -1463,19 +1473,57 @@
   <footer class="site-footer">
   <p>
     © 2026 Subhadip Biswas ·
-    <a
-      href="https://github.com/shuvo-dip/pdf-slicer"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      Source code
-    </a>
     · MIT License
   </p>
 
-  <p class="site-updated">
-    Last updated: <span id="lastUpdated">Loading…</span>
-  </p>
+<p class="site-updated">
+  Last updated: <span id="lastUpdated"></span>
+</p>
 </footer>
+  <script>
+  (() => {
+    const dateElement = document.getElementById("lastUpdated");
+
+    const formatDate = (date) =>
+      date.toLocaleString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      });
+
+    /*
+     * Show the browser-reported modification date immediately.
+     * This prevents the page from displaying "Loading…".
+     */
+    const pageDate = new Date(document.lastModified);
+
+    if (!Number.isNaN(pageDate.getTime())) {
+      dateElement.textContent = formatDate(pageDate);
+    }
+    fetch("https://api.github.com/repos/shuvo-dip/pdf-slicer/commits/main")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("GitHub request failed");
+        }
+
+        return response.json();
+      })
+      .then((data) => {
+        const commitDate = new Date(
+          data.commit.committer.date
+        );
+
+        if (!Number.isNaN(commitDate.getTime())) {
+          dateElement.textContent =
+            formatDate(commitDate);
+        }
+      })
+      .catch(() => {
+      });
+  })();
+</script>
 </body>
 </html>
