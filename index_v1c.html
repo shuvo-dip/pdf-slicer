@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PDF Slicer — tile posters onto A-series sheets</title>
+<style>
+  :root {
+    --ink: #171b20;
+    --ink-soft: #4c545d;
+    --line: #d7dbdf;
+    --bg: #eef0f2;
+    --card: #ffffff;
+    --cut: #d2242a;          /* the slice line */
+    --cut-soft: rgba(210, 36, 42, 0.08);
+    --mat: #e6ebe6;          /* cutting-mat green */
+    --mat-line: rgba(60, 90, 70, 0.10);
+    --ok: #1d6b3a;
+    --radius: 10px;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 20px 60px;
+  }
+
+  header.site {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+  header.site h1 {
+    margin: 0;
+    font-size: 1.7rem;
+    letter-spacing: -0.01em;
+  }
+  header.site h1 .knife {
+    color: var(--cut);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  p.tagline {
+    margin: 2px 0 22px;
+    color: var(--ink-soft);
+    max-width: 60ch;
+  }
+
+  /* ---------- two-column layout: controls left, preview right ---------- */
+  .app {
+    display: grid;
+    grid-template-columns: 370px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 880px) {
+    .app { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+  }
+  .card + .card { margin-top: 16px; }
+  .card h2 {
+    margin: 0 0 12px;
+    font-size: 0.8rem;
+    font-family: var(--mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- upload ---------- */
+  .drop {
+    border: 2px dashed var(--line);
+    border-radius: 8px;
+    padding: 18px 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .drop:hover, .drop.dragging {
+    border-color: var(--cut);
+    background: var(--cut-soft);
+  }
+  .drop strong { display: block; margin-bottom: 4px; }
+  .drop span { color: var(--ink-soft); font-size: 0.88rem; }
+  .drop input { display: none; }
+
+  #fileInfo {
+    margin-top: 12px;
+    font-size: 0.88rem;
+    color: var(--ink-soft);
+  }
+  #fileInfo b { color: var(--ink); }
+  #fileInfo .num { font-family: var(--mono); }
+
+  /* ---------- controls ---------- */
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .controls .full { grid-column: 1 / -1; }
+  label.field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  select, input[type="number"] {
+    padding: 8px 10px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--ink);
+    width: 100%;
+  }
+  select:focus-visible, input:focus-visible, button:focus-visible, a:focus-visible, .drop:focus-visible {
+    outline: 2px solid var(--cut);
+    outline-offset: 2px;
+  }
+  input[readonly] {
+    background: var(--bg);
+    color: var(--ink-soft);
+    font-family: var(--mono);
+  }
+  .hint {
+    grid-column: 1 / -1;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    margin: -4px 0 0;
+  }
+
+  /* ---------- layout readout ---------- */
+  .readout {
+    margin-top: 14px;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 14px;
+    font-size: 0.86rem;
+  }
+  .readout dt { color: var(--ink-soft); margin: 0; }
+  .readout dd {
+    margin: 0;
+    text-align: right;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .readout dd.warn { color: var(--cut); }
+
+  /* ---------- generate ---------- */
+  .actions { margin-top: 16px; display: grid; gap: 10px; }
+  button.primary {
+    padding: 11px 16px;
+    border: none;
+    border-radius: 8px;
+    background: var(--ink);
+    color: #fff;
+    font-size: 0.98rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary:hover:not(:disabled) { background: #000; }
+  button.primary:disabled { background: #b6bcc2; cursor: not-allowed; }
+  #generationStatus { font-size: 0.86rem; color: var(--ink-soft); }
+  a.download {
+    display: block;
+    text-align: center;
+    padding: 11px 16px;
+    border-radius: 8px;
+    background: var(--ok);
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 0.95rem;
+    overflow-wrap: anywhere;
+  }
+  a.download:hover { background: #14532b; }
+
+  /* ---------- preview: the cutting mat ---------- */
+  .stage-card { padding: 18px; }
+  .stage-card .legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    margin-bottom: 12px;
+  }
+  .legend i {
+    display: inline-block;
+    width: 18px; height: 0;
+    border-top: 2px dashed var(--cut);
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  .legend .swatch {
+    display: inline-block;
+    width: 14px; height: 14px;
+    vertical-align: -2px;
+    margin-right: 6px;
+    border: 1px solid var(--line);
+  }
+  .legend .swatch.blank {
+    background: repeating-linear-gradient(45deg, #fff, #fff 4px, #e3e6e9 4px, #e3e6e9 8px);
+  }
+  .legend .swatch.crop { background: rgba(23, 27, 32, 0.45); }
+
+  .stage {
+    background:
+      repeating-linear-gradient(0deg,   var(--mat-line) 0 1px, transparent 1px 24px),
+      repeating-linear-gradient(90deg,  var(--mat-line) 0 1px, transparent 1px 24px),
+      var(--mat);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 22px;
+    display: flex;
+    justify-content: center;
+    overflow: auto;
+  }
+
+  #previewPlaceholder {
+    color: var(--ink-soft);
+    text-align: center;
+    padding: 70px 20px;
+    font-size: 0.92rem;
+  }
+
+  #previewWrapper {
+    position: relative;
+    display: none;
+    background: #fff;
+    box-shadow: 0 6px 22px rgba(20, 30, 40, 0.18);
+  }
+  #posterCanvas { position: absolute; top: 0; left: 0; display: block; }
+
+  #overlay { position: absolute; inset: 0; pointer-events: none; }
+  .cut-v, .cut-h { position: absolute; }
+  .cut-v { width: 0; border-left: 2px dashed var(--cut); }
+  .cut-h { height: 0; border-top: 2px dashed var(--cut); }
+  .ass-outline {
+    position: absolute;
+    border: 2px solid var(--cut);
+  }
+  .blank-strip {
+    position: absolute;
+    background: repeating-linear-gradient(45deg, #ffffff, #ffffff 6px, #e3e6e9 6px, #e3e6e9 12px);
+  }
+  .crop-shade {
+    position: absolute;
+    background: rgba(23, 27, 32, 0.45);
+  }
+  .tile-num {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 5px;
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--cut);
+    border: 1px solid rgba(210, 36, 42, 0.4);
+    border-radius: 3px;
+  }
+
+  .privacy {
+    margin-top: 20px;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+  }
+  .privacy b { color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <h1>PDF <span class="knife">/</span> Slicer</h1>
+    <span class="eyebrow">local · in-browser · nothing uploaded</span>
+  </header>
+  <p class="tagline">
+    Tile a large-format poster onto A-series sheets. Rows are derived from the paper's
+    1:&#8730;2 ratio, so every cut lands exactly on a sheet edge.
+  </p>
+
+  <div class="app">
+
+    <!-- ============ LEFT: controls ============ -->
+    <div>
+      <div class="card">
+        <h2>1 · Poster</h2>
+        <label class="drop" id="dropZone" tabindex="0">
+          <strong>Select a PDF poster</strong>
+          <span>click to browse or drop the file here</span>
+          <input id="pdfInput" type="file" accept="application/pdf" />
+        </label>
+        <div id="fileInfo"></div>
+      </div>
+
+      <div class="card">
+        <h2>2 · Sheets</h2>
+        <div class="controls">
+          <label class="field">
+            Paper size
+            <select id="paperSize">
+              <option value="A2">A2 (420 × 594)</option>
+              <option value="A3" selected>A3 (297 × 420)</option>
+              <option value="A4">A4 (210 × 297)</option>
+              <option value="A5">A5 (148 × 210)</option>
+            </select>
+          </label>
+          <label class="field">
+            Sheet orientation
+            <select id="sheetOrientation">
+              <option value="auto" selected>Auto (match poster)</option>
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </label>
+          <label class="field">
+            Rotate poster
+            <select id="posterRotation">
+              <option value="0" selected>No rotation</option>
+              <option value="90">90° clockwise</option>
+              <option value="180">180°</option>
+              <option value="270">90° counter-clockwise</option>
+            </select>
+          </label>
+          <label class="field">
+            Overflow
+            <select id="fillMode">
+              <option value="fit" selected>Fit — blank in last row</option>
+              <option value="crop">Crop — trim poster edges</option>
+            </select>
+          </label>
+          <label class="field">
+            Columns
+            <input id="columns" type="number" min="1" max="12" step="1" value="3" />
+          </label>
+          <label class="field">
+            Rows (automatic)
+            <input id="rowsOut" type="text" readonly value="—" />
+          </label>
+          <p class="hint">
+            You choose columns; rows follow from the A-series ratio, so tiles are never
+            distorted. In Fit mode the last row simply carries some blank sheet.
+          </p>
+        </div>
+
+        <dl class="readout" id="readout" hidden>
+          <dt>Sheets to print</dt>       <dd id="roSheets">—</dd>
+          <dt>Sheet size</dt>            <dd id="roSheet">—</dd>
+          <dt>Print scale</dt>           <dd id="roScale">—</dd>
+          <dt>Printed poster</dt>        <dd id="roPoster">—</dd>
+          <dt>Assembled grid</dt>        <dd id="roGrid">—</dd>
+          <dt id="roExtraLabel">Blank on last row</dt> <dd id="roExtra">—</dd>
+        </dl>
+
+        <div class="actions">
+          <button id="generateButton" class="primary" disabled>Slice into sheets</button>
+          <div id="generationStatus"></div>
+          <a id="downloadLink" class="download" hidden>Download sliced PDF</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ RIGHT: preview ============ -->
+    <div class="card stage-card">
+      <h2>3 · Cut preview</h2>
+      <div class="legend">
+        <span><i></i>cut line</span>
+        <span><span class="swatch blank"></span>blank sheet area (Fit)</span>
+        <span><span class="swatch crop"></span>trimmed away (Crop)</span>
+      </div>
+      <div class="stage" id="stage">
+        <div id="previewPlaceholder">
+          Upload a PDF to see the poster with its cut lines.
+        </div>
+        <div id="previewWrapper">
+          <canvas id="posterCanvas"></canvas>
+          <div id="overlay"></div>
+        </div>
+      </div>
+      <p class="privacy">
+        <b>Privacy:</b> the PDF is processed entirely in your browser with pdf.js and
+        pdf-lib. Nothing is sent to a server. Print the output at 100&nbsp;% scale,
+        borderless if your printer allows it, then trim and glue.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+/* ---------------- constants ---------------- */
+const PT_PER_MM = 72 / 25.4;
+const mm2pt = (mm) => mm * PT_PER_MM;
+const pt2mm = (pt) => pt / PT_PER_MM;
+
+/* Portrait dimensions in mm. Exact ISO 216 values. */
+const A_SIZES_MM = {
+  A2: [420, 594],
+  A3: [297, 420],
+  A4: [210, 297],
+  A5: [148, 210],
+};
+
+/* ---------------- elements ---------------- */
+const $ = (id) => document.getElementById(id);
+const pdfInput = $("pdfInput"), dropZone = $("dropZone"), fileInfo = $("fileInfo");
+const paperSel = $("paperSize"), orientSel = $("sheetOrientation");
+const rotSel = $("posterRotation"), modeSel = $("fillMode");
+const colsInput = $("columns"), rowsOut = $("rowsOut");
+const readout = $("readout");
+const stage = $("stage"), placeholder = $("previewPlaceholder");
+const wrapper = $("previewWrapper"), canvas = $("posterCanvas"), overlay = $("overlay");
+const generateBtn = $("generateButton"), statusEl = $("generationStatus"), dlLink = $("downloadLink");
+
+/* ---------------- state ---------------- */
+let srcBytes = null;          // Uint8Array of the uploaded PDF
+let srcName = "poster.pdf";
+let srcW0 = 0, srcH0 = 0;     // first-page mediabox size in points (unrotated)
+let srcRotate = 0;            // /Rotate of the first page (clockwise degrees)
+let pdfjsPage = null;         // pdf.js page object for preview rendering
+let currentURL = null;
+
+/* ---------------- geometry ---------------- */
+function totalRotation() {
+  return (srcRotate + Number(rotSel.value)) % 360;   // clockwise
+}
+
+function computeLayout() {
+  if (!srcBytes) return null;
+  const cols = Math.min(12, Math.max(1, Math.round(Number(colsInput.value) || 1)));
+
+  const total = totalRotation();
+  const swapped = total % 180 === 90;
+  const posterW = swapped ? srcH0 : srcW0;   // effective poster size, points
+  const posterH = swapped ? srcW0 : srcH0;
+
+  const [pwmm, phmm] = A_SIZES_MM[paperSel.value];
+  let orient = orientSel.value;
+  if (orient === "auto") orient = posterW >= posterH ? "landscape" : "portrait";
+  const sheetWmm = orient === "landscape" ? phmm : pwmm;
+  const sheetHmm = orient === "landscape" ? pwmm : phmm;
+  const sheetW = mm2pt(sheetWmm), sheetH = mm2pt(sheetHmm);
+
+  /* Tile size in poster coordinates: width fixed by the column count,
+     height forced by the sheet's aspect ratio (1:√2 family). */
+  const tileW = posterW / cols;
+  const tileH = tileW * (sheetH / sheetW);
+  const rowsExact = posterH / tileH;
+
+  const mode = modeSel.value;
+  const rows = mode === "crop"
+    ? Math.max(1, Math.round(rowsExact))
+    : Math.max(1, Math.ceil(rowsExact - 1e-9));
+
+  const assW = cols * sheetW, assH = rows * sheetH;
+
+  /* Scale and placement of the poster inside the assembled grid.
+     (ox, oy) = poster bottom-left in assembled coordinates. */
+  let s, ox, oy;
+  if (mode === "crop") {
+    s = Math.max(assW / posterW, assH / posterH);   // cover, then trim
+    ox = (assW - s * posterW) / 2;
+    oy = (assH - s * posterH) / 2;
+  } else {
+    s = assW / posterW;                              // exact width fit
+    ox = 0;
+    oy = assH - s * posterH;                         // top-aligned, blank at bottom
+  }
+
+  return { cols, rows, rowsExact, total, posterW, posterH,
+           sheetW, sheetH, sheetWmm, sheetHmm, orient, mode,
+           assW, assH, s, ox, oy };
+}
+
+/* ---------------- readout ---------------- */
+function fmtMM(pt) { return pt2mm(pt).toFixed(0); }
+
+function updateReadout(L) {
+  rowsOut.value = L ? String(L.rows) : "—";
+  if (!L) { readout.hidden = true; return; }
+  readout.hidden = false;
+
+  $("roSheets").textContent = `${L.cols} × ${L.rows} = ${L.cols * L.rows}`;
+  $("roSheet").textContent =
+    `${paperSel.value} ${L.orient} · ${L.sheetWmm} × ${L.sheetHmm} mm`;
+  const scalePct = L.s * 100;
+  $("roScale").textContent = `${scalePct.toFixed(1)} %`;
+  $("roPoster").textContent =
+    `${fmtMM(L.s * L.posterW)} × ${fmtMM(L.s * L.posterH)} mm`;
+  $("roGrid").textContent =
+    `${(L.cols * L.sheetWmm).toFixed(0)} × ${(L.rows * L.sheetHmm).toFixed(0)} mm`;
+
+  const extraLabel = $("roExtraLabel"), extra = $("roExtra");
+  if (L.mode === "fit") {
+    extraLabel.textContent = "Blank on last row";
+    const blank = L.assH - L.s * L.posterH;
+    extra.textContent = `${fmtMM(blank)} mm of ${L.sheetHmm} mm`;
+    extra.classList.remove("warn");
+  } else {
+    extraLabel.textContent = "Trimmed off";
+    const cx = L.s * L.posterW - L.assW;   // total horizontal trim
+    const cy = L.s * L.posterH - L.assH;   // total vertical trim
+    const parts = [];
+    if (cx > 0.5) parts.push(`${fmtMM(cx)} mm width`);
+    if (cy > 0.5) parts.push(`${fmtMM(cy)} mm height`);
+    extra.textContent = parts.length ? parts.join(" · ") : "none";
+    extra.classList.toggle("warn", parts.length > 0);
+  }
+}
+
+/* ---------------- preview ---------------- */
+let renderToken = 0;
+
+async function renderPreview() {
+  if (!pdfjsPage) return;
+  const L = computeLayout();
+  if (!L) return;
+  const token = ++renderToken;
+
+  const stageInner = stage.clientWidth - 46;                 // stage padding
+  const maxW = Math.max(240, Math.min(stageInner, 760));
+  const pp = Math.min(maxW / L.posterW, 2);                  // px per point
+
+  const viewport = pdfjsPage.getViewport({ scale: pp, rotation: L.total });
+  const dpr = window.devicePixelRatio || 1;
+  const ctx = canvas.getContext("2d");
+  canvas.width = Math.floor(viewport.width * dpr);
+  canvas.height = Math.floor(viewport.height * dpr);
+  canvas.style.width = `${viewport.width}px`;
+  canvas.style.height = `${viewport.height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  await pdfjsPage.render({ canvasContext: ctx, viewport }).promise;
+  if (token !== renderToken) return;                         // superseded
+
+  placeholder.style.display = "none";
+  wrapper.style.display = "block";
+  drawOverlay(L, pp);
+}
+
+function box(cls, x, y, w, h) {
+  const d = document.createElement("div");
+  d.className = cls;
+  d.style.left = `${x}px`;  d.style.top = `${y}px`;
+  d.style.width = `${w}px`; d.style.height = `${h}px`;
+  return d;
+}
+
+function drawOverlay(L, pp) {
+  overlay.innerHTML = "";
+
+  /* Assembled grid rectangle expressed in the poster's frame
+     (top-left origin, y downwards, units: points). */
+  const aL = -L.ox / L.s;
+  const aT = (L.oy + L.s * L.posterH - L.assH) / L.s;
+  const aW = L.assW / L.s;
+  const aH = L.assH / L.s;
+
+  const wrapW = Math.max(L.posterW, aL + aW) * pp;
+  const wrapH = Math.max(L.posterH, aT + aH) * pp;
+  wrapper.style.width = `${wrapW}px`;
+  wrapper.style.height = `${wrapH}px`;
+
+  const X = (v) => v * pp, Y = (v) => v * pp;
+
+  /* Fit mode: hatched strip for the blank part of the last row. */
+  if (L.mode === "fit" && aT + aH > L.posterH + 0.5 / pp) {
+    overlay.appendChild(box("blank-strip",
+      X(aL), Y(L.posterH), aW * pp, (aT + aH - L.posterH) * pp));
+  }
+
+  /* Crop mode: shade the poster regions that fall outside the grid. */
+  if (L.mode === "crop") {
+    if (aT > 0.5 / pp)
+      overlay.appendChild(box("crop-shade", 0, 0, L.posterW * pp, Y(aT)));
+    if (aT + aH < L.posterH - 0.5 / pp)
+      overlay.appendChild(box("crop-shade",
+        0, Y(aT + aH), L.posterW * pp, (L.posterH - aT - aH) * pp));
+    if (aL > 0.5 / pp)
+      overlay.appendChild(box("crop-shade", 0, Y(aT), X(aL), aH * pp));
+    if (aL + aW < L.posterW - 0.5 / pp)
+      overlay.appendChild(box("crop-shade",
+        X(aL + aW), Y(aT), (L.posterW - aL - aW) * pp, aH * pp));
+  }
+
+  /* Grid outline. */
+  const outline = box("ass-outline", X(aL), Y(aT), aW * pp, aH * pp);
+  overlay.appendChild(outline);
+
+  /* Interior cut lines. */
+  const cw = aW / L.cols, rh = aH / L.rows;
+  for (let c = 1; c < L.cols; c++) {
+    const d = box("cut-v", X(aL + c * cw), Y(aT), 0, aH * pp);
+    overlay.appendChild(d);
+  }
+  for (let r = 1; r < L.rows; r++) {
+    const d = box("cut-h", X(aL), Y(aT + r * rh), aW * pp, 0);
+    overlay.appendChild(d);
+  }
+
+  /* Tile numbers (assembly order, row by row). */
+  if (L.cols * L.rows <= 48) {
+    for (let r = 0; r < L.rows; r++) {
+      for (let c = 0; c < L.cols; c++) {
+        const n = document.createElement("div");
+        n.className = "tile-num";
+        n.textContent = r * L.cols + c + 1;
+        n.style.left = `${X(aL + c * cw) + 4}px`;
+        n.style.top = `${Y(aT + r * rh) + 4}px`;
+        overlay.appendChild(n);
+      }
+    }
+  }
+}
+
+/* ---------------- upload ---------------- */
+async function loadFile(file) {
+  if (!file) return;
+  if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
+    fileInfo.textContent = "Please choose a PDF file.";
+    return;
+  }
+  try {
+    fileInfo.textContent = "Reading PDF locally…";
+    const buf = await file.arrayBuffer();
+    srcBytes = new Uint8Array(buf);
+    srcName = file.name;
+
+    const doc = await PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
+    const page0 = doc.getPage(0);
+    srcW0 = page0.getWidth();
+    srcH0 = page0.getHeight();
+
+    const task = pdfjsLib.getDocument({ data: srcBytes.slice() });
+    const pdf = await task.promise;
+    pdfjsPage = await pdf.getPage(1);
+    srcRotate = ((pdfjsPage.rotate % 360) + 360) % 360;
+
+    const pageCount = doc.getPageCount();
+    const wmm = pt2mm(srcW0), hmm = pt2mm(srcH0);
+    fileInfo.innerHTML =
+      `<b>${srcName}</b><br>` +
+      `<span class="num">${(file.size / 1048576).toFixed(2)} MB · ` +
+      `${wmm.toFixed(0)} × ${hmm.toFixed(0)} mm</span>` +
+      (pageCount > 1
+        ? `<br>${pageCount} pages — only page 1 is sliced.`
+        : "");
+
+    generateBtn.disabled = false;
+    statusEl.textContent = "";
+    dlLink.hidden = true;
+    update(true);
+  } catch (err) {
+    console.error(err);
+    srcBytes = null; pdfjsPage = null;
+    generateBtn.disabled = true;
+    fileInfo.textContent =
+      "This PDF could not be read. It may be damaged, password-protected, or unsupported.";
+  }
+}
+
+pdfInput.addEventListener("change", () => loadFile(pdfInput.files[0]));
+dropZone.addEventListener("dragover", (e) => {
+  e.preventDefault(); dropZone.classList.add("dragging");
+});
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragging"));
+dropZone.addEventListener("drop", (e) => {
+  e.preventDefault(); dropZone.classList.remove("dragging");
+  loadFile(e.dataTransfer.files[0]);
+});
+dropZone.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pdfInput.click(); }
+});
+
+/* ---------------- control changes ---------------- */
+function update(rerenderCanvas) {
+  const L = computeLayout();
+  updateReadout(L);
+  if (!L || !pdfjsPage) return;
+  if (rerenderCanvas) renderPreview();
+  else {
+    const pp = canvas.clientWidth > 0 && L.posterW > 0
+      ? canvas.clientWidth / L.posterW : null;
+    if (pp) drawOverlay(L, pp);
+    else renderPreview();
+  }
+  dlLink.hidden = true;                 // settings changed → old output stale
+}
+
+paperSel.addEventListener("change", () => update(false));
+orientSel.addEventListener("change", () => update(false));
+modeSel.addEventListener("change", () => update(false));
+colsInput.addEventListener("input", () => update(false));
+rotSel.addEventListener("change", () => update(true));   // canvas must re-render
+
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => update(true), 200);
+});
+
+/* ---------------- output generation ---------------- */
+async function generate() {
+  const L = computeLayout();
+  if (!L || !srcBytes) return;
+
+  try {
+    generateBtn.disabled = true;
+    dlLink.hidden = true;
+    statusEl.textContent = "Slicing locally…";
+
+    const out = await PDFLib.PDFDocument.create();
+    const [emb] = await out.embedPdf(srcBytes.slice(), [0]);
+
+    const { s, total, sheetW, sheetH, assH, ox, oy, cols, rows } = L;
+    const sW0 = s * srcW0, sH0 = s * srcH0;   // scaled *unrotated* page size
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const page = out.addPage([sheetW, sheetH]);
+
+        /* Bounding-box bottom-left of the (rotated, scaled) poster,
+           expressed in this tile's own coordinate system. */
+        const bbx = ox - c * sheetW;
+        const bby = oy - (assH - (r + 1) * sheetH);
+
+        /* pdf-lib rotates counter-clockwise about (x, y); our `total`
+           is clockwise, so pass -total and offset the anchor so the
+           bounding box lands at (bbx, bby). */
+        let x = bbx, y = bby;
+        if (total === 90)       { x = bbx;        y = bby + sW0; }
+        else if (total === 180) { x = bbx + sW0;  y = bby + sH0; }
+        else if (total === 270) { x = bbx + sH0;  y = bby; }
+
+        page.drawPage(emb, {
+          x, y, xScale: s, yScale: s,
+          rotate: PDFLib.degrees(-total),
+        });
+      }
+    }
+
+    out.setTitle("Sliced poster");
+    out.setCreator("PDF Slicer");
+    out.setProducer("PDF Slicer (pdf-lib)");
+
+    const bytes = await out.save();
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    if (currentURL) URL.revokeObjectURL(currentURL);
+    currentURL = URL.createObjectURL(blob);
+
+    const base = srcName.replace(/\.pdf$/i, "");
+    const name = `${base}_${paperSel.value}_${cols}x${rows}.pdf`;
+    dlLink.href = currentURL;
+    dlLink.download = name;
+    dlLink.textContent = `Download ${name}`;
+    dlLink.hidden = false;
+
+    statusEl.innerHTML =
+      `<b>Done.</b> ${cols * rows} sheets · ` +
+      `${(blob.size / 1048576).toFixed(2)} MB · print at 100 % scale.`;
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = `Could not generate the sliced PDF: ${err.message}`;
+  } finally {
+    generateBtn.disabled = false;
+  }
+}
+generateBtn.addEventListener("click", generate);
+
+update(false);
+</script>
+</body>
+</html>
