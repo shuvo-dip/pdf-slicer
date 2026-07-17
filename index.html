@@ -91,66 +91,109 @@
       }
     }
     .preview-section {
-  margin-top: 2rem;
-}
+      margin-top: 2rem;
+    }
 
-.preview-wrapper {
-  position: relative;
-  display: none;
-  width: fit-content;
-  max-width: 100%;
-  margin: 1rem auto 0;
-  border: 1px solid #777;
-  background: white;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  overflow: hidden;
-}
-
-#posterCanvas {
-  display: block;
-  max-width: 100%;
-  height: auto;
-}
-
-#gridOverlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.grid-line {
-  position: absolute;
-  background: rgba(210, 20, 20, 0.85);
-}
-
-.grid-line.vertical {
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  transform: translateX(-1px);
-}
-
-.grid-line.horizontal {
-  left: 0;
-  right: 0;
-  height: 2px;
-  transform: translateY(-1px);
-}
-
-.preview-note {
-  color: #555;
-  text-align: center;
-  font-size: 0.95rem;
-}
-
-.preview-placeholder {
-  padding: 2rem;
-  text-align: center;
-  color: #666;
-  background: #fafafa;
-  border: 1px dashed #aaa;
-  border-radius: 8px;
-}
+    .preview-wrapper {
+      position: relative;
+      display: none;
+      width: fit-content;
+      max-width: 100%;
+      margin: 1rem auto 0;
+      border: 1px solid #777;
+      background: white;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+      overflow: hidden;
+    }
+    
+    #posterCanvas {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+    
+    #gridOverlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    
+    .grid-line {
+      position: absolute;
+      background: rgba(210, 20, 20, 0.85);
+    }
+    
+    .grid-line.vertical {
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      transform: translateX(-1px);
+    }
+    
+    .grid-line.horizontal {
+      left: 0;
+      right: 0;
+      height: 2px;
+      transform: translateY(-1px);
+    }
+    
+    .preview-note {
+      color: #555;
+      text-align: center;
+      font-size: 0.95rem;
+    }
+    
+    .preview-placeholder {
+      padding: 2rem;
+      text-align: center;
+      color: #666;
+      background: #fafafa;
+      border: 1px dashed #aaa;
+      border-radius: 8px;
+    }
+    .generate-section {
+      margin-top: 1.5rem;
+    }
+    
+    #generateButton {
+      padding: 0.8rem 1.3rem;
+      border: none;
+      border-radius: 7px;
+      background: #1769aa;
+      color: white;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    
+    #generateButton:hover:not(:disabled) {
+      background: #12558a;
+    }
+    
+    #generateButton:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    
+    #generationStatus {
+      margin-top: 0.8rem;
+      color: #444;
+    }
+    
+    .download-link {
+      display: inline-block;
+      margin-top: 1rem;
+      padding: 0.8rem 1.3rem;
+      border-radius: 7px;
+      background: #237a3b;
+      color: white;
+      font-weight: bold;
+      text-decoration: none;
+    }
+    
+    .download-link:hover {
+      background: #1a612e;
+    }
   </style>
 </head>
 
@@ -220,6 +263,21 @@
 
     <div id="layoutInfo" class="layout-info"></div>
     <div id="tilePreview" class="tile-preview"></div>
+    <div class="generate-section">
+      <button id="generateButton" disabled>
+        Generate sliced PDF
+      </button>
+    
+      <div id="generationStatus"></div>
+    
+      <a
+        id="downloadLink"
+        class="download-link"
+        hidden
+      >
+        Download sliced PDF
+      </a>
+    </div>
   </div>
     <div class="panel preview-section">
     <h2>Poster preview</h2>
@@ -285,13 +343,26 @@
     
     const gridOverlay =
       document.getElementById("gridOverlay");
+    const generateButton =
+      document.getElementById("generateButton");
     
+    const generationStatus =
+      document.getElementById("generationStatus");
+    
+    const downloadLink =
+      document.getElementById("downloadLink");
+    
+    let uploadedFileName = "poster.pdf";
+    let currentDownloadURL = null;
     let uploadedPdfBytes = null;
     let sourceWidthMM = null;
     let sourceHeightMM = null;
 
     function pointsToMillimeters(points) {
       return points / POINTS_PER_MM;
+    }
+    function millimetersToPoints(mm) {
+      return mm * POINTS_PER_MM;
     }
 
     function getOutputSheetDimensions() {
@@ -503,7 +574,9 @@
       
         previewWrapper.style.display = "none";
         previewPlaceholder.style.display = "block";
-      
+        generateButton.disabled = true;
+        generationStatus.textContent = "";
+        downloadLink.hidden = true;
         updateLayoutPreview();
         return;
       }
@@ -522,6 +595,11 @@
 
         const arrayBuffer = await file.arrayBuffer();
         uploadedPdfBytes = new Uint8Array(arrayBuffer);
+        uploadedFileName = file.name;
+        generateButton.disabled = false;
+        
+        generationStatus.textContent = "";
+        downloadLink.hidden = true;
 
         const pdfDocument =
           await PDFLib.PDFDocument.load(arrayBuffer);
@@ -569,7 +647,224 @@
           "The PDF could not be read. It may be damaged, encrypted, or unsupported.";
       }
     });
-
+    async function generateSlicedPdf() {
+      if (!uploadedPdfBytes) {
+        generationStatus.textContent =
+          "Please upload a PDF first.";
+        return;
+      }
+    
+      const columns = Number(columnsInput.value);
+      const rows = Number(rowsInput.value);
+    
+      if (
+        !Number.isInteger(columns) ||
+        !Number.isInteger(rows) ||
+        columns < 1 ||
+        rows < 1
+      ) {
+        generationStatus.textContent =
+          "Columns and rows must be positive integers.";
+        return;
+      }
+    
+      try {
+        generateButton.disabled = true;
+        downloadLink.hidden = true;
+    
+        generationStatus.textContent =
+          "Generating sliced PDF locally...";
+    
+        /*
+         * Load the original PDF.
+         */
+        const sourcePdf =
+          await PDFLib.PDFDocument.load(
+            uploadedPdfBytes.slice()
+          );
+    
+        if (sourcePdf.getPageCount() < 1) {
+          throw new Error("The PDF contains no pages.");
+        }
+    
+        /*
+         * Version 1 processes the first page only.
+         */
+        const sourcePage = sourcePdf.getPage(0);
+    
+        const sourceWidthPoints =
+          sourcePage.getWidth();
+    
+        const sourceHeightPoints =
+          sourcePage.getHeight();
+    
+        /*
+         * Determine the selected output-sheet dimensions.
+         */
+        const sheet = getOutputSheetDimensions();
+    
+        const sheetWidthPoints =
+          millimetersToPoints(sheet.width);
+    
+        const sheetHeightPoints =
+          millimetersToPoints(sheet.height);
+    
+        /*
+         * Total assembled poster dimensions.
+         */
+        const assembledWidthPoints =
+          columns * sheetWidthPoints;
+    
+        const assembledHeightPoints =
+          rows * sheetHeightPoints;
+    
+        /*
+         * Uniformly scale the original poster so it fits inside
+         * the complete assembled grid without distortion.
+         */
+        const scaleX =
+          assembledWidthPoints / sourceWidthPoints;
+    
+        const scaleY =
+          assembledHeightPoints / sourceHeightPoints;
+    
+        const scale = Math.min(scaleX, scaleY);
+    
+        const scaledWidthPoints =
+          sourceWidthPoints * scale;
+    
+        const scaledHeightPoints =
+          sourceHeightPoints * scale;
+    
+        /*
+         * Centre the poster when the aspect ratios are not identical.
+         */
+        const offsetX =
+          (assembledWidthPoints - scaledWidthPoints) / 2;
+    
+        const offsetY =
+          (assembledHeightPoints - scaledHeightPoints) / 2;
+    
+        /*
+         * Create the output PDF and embed the source page once.
+         */
+        const outputPdf =
+          await PDFLib.PDFDocument.create();
+    
+        const [embeddedSourcePage] =
+          await outputPdf.embedPdf(
+            uploadedPdfBytes.slice(),
+            [0]
+          );
+    
+        /*
+         * Tile order:
+         *
+         * 1  2
+         * 3  4
+         * 5  6
+         *
+         * Therefore rows are processed from top to bottom.
+         */
+        for (let row = 0; row < rows; row++) {
+          for (let column = 0;
+               column < columns;
+               column++) {
+    
+            const outputPage =
+              outputPdf.addPage([
+                sheetWidthPoints,
+                sheetHeightPoints
+              ]);
+    
+            /*
+             * Position of this tile in the complete assembled poster.
+             */
+            const tileLeft =
+              column * sheetWidthPoints;
+    
+            const tileBottom =
+              assembledHeightPoints -
+              (row + 1) * sheetHeightPoints;
+    
+            /*
+             * Draw the complete poster but shift it so that only the
+             * current tile region lies inside this output page.
+             *
+             * Content outside the page boundary is clipped.
+             */
+            outputPage.drawPage(
+              embeddedSourcePage,
+              {
+                x: offsetX - tileLeft,
+                y: offsetY - tileBottom,
+                width: scaledWidthPoints,
+                height: scaledHeightPoints
+              }
+            );
+          }
+        }
+    
+        /*
+         * Add useful PDF metadata.
+         */
+        outputPdf.setTitle("Sliced poster");
+        outputPdf.setCreator("PDF Slicer");
+        outputPdf.setProducer("PDF Slicer using pdf-lib");
+    
+        const outputBytes =
+          await outputPdf.save();
+    
+        const outputBlob =
+          new Blob(
+            [outputBytes],
+            { type: "application/pdf" }
+          );
+    
+        /*
+         * Remove the previous temporary download URL.
+         */
+        if (currentDownloadURL) {
+          URL.revokeObjectURL(currentDownloadURL);
+        }
+    
+        currentDownloadURL =
+          URL.createObjectURL(outputBlob);
+    
+        const baseName =
+          uploadedFileName.replace(/\.pdf$/i, "");
+    
+        const outputFileName =
+          `${baseName}_${columns}x${rows}_tiles.pdf`;
+    
+        downloadLink.href = currentDownloadURL;
+        downloadLink.download = outputFileName;
+        downloadLink.textContent =
+          `Download ${outputFileName}`;
+        downloadLink.hidden = false;
+    
+        const outputSizeMB =
+          outputBlob.size / (1024 * 1024);
+    
+        generationStatus.innerHTML = `
+          <strong>Output ready.</strong><br>
+          Pages: ${columns * rows}<br>
+          Page size:
+          ${sheet.width} × ${sheet.height} mm<br>
+          Output size:
+          ${outputSizeMB.toFixed(2)} MB
+        `;
+    
+      } catch (error) {
+        console.error(error);
+    
+        generationStatus.textContent =
+          `Could not generate the sliced PDF: ${error.message}`;
+    
+      } finally {
+        generateButton.disabled = false;
+      }
+    }
     paperSize.addEventListener(
       "change",
       updateLayoutPreview
@@ -588,6 +883,10 @@
     rowsInput.addEventListener(
       "input",
       updateLayoutPreview
+    );
+    generateButton.addEventListener(
+      "click",
+      generateSlicedPdf
     );
 
     updateLayoutPreview();
